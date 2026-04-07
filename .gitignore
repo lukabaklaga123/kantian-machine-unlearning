@@ -1,0 +1,15 @@
+# Ignore model weights and large numpy arrays (Hosted on Hugging Face instead)
+*.pt
+*.bin
+*.safetensors
+*.npy
+
+# Ignore datasets and archives
+*.csv
+*.zip
+mtsamples.csv
+
+# Ignore Python caches and Colab checkpoints
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
