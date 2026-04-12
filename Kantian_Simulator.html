@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adversarial Latent Space Auditor — Kantian Unlearning</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* ── Base ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #050505;
+            color: #00ff00;
+            font-family: 'Share Tech Mono', 'Courier New', monospace; /* offline fallback */
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px;
+            overflow-y: auto; /* FIX: was 'hidden', clips on laptops */
+        }
+
+        /* ── Neon borders ── */
+        .panel {
+            border: 1px solid #00ff00;
+            box-shadow: 0 0 8px rgba(0,255,0,0.15), inset 0 0 8px rgba(0,255,0,0.05);
+            background: linear-gradient(180deg, #0a0a0a 0%, #000 100%);
+            border-radius: 6px;
+        }
+        .panel-red {
+            border-color: #ff003c;
+            box-shadow: 0 0 8px rgba(255,0,60,0.15), inset 0 0 8px rgba(255,0,60,0.05);
+        }
+
+        /* ── Header ── */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 18px;
+            border: 1px solid #00ff00;
+            box-shadow: 0 0 8px rgba(0,255,0,0.15);
+            background: #0a0a0a;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+        header h1 { font-size: 18px; font-weight: 700; letter-spacing: .15em; color: #fff; }
+        header h2 { font-size: 11px; color: #4ade80; opacity: .8; margin-top: 3px; }
+        .badge-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .badge {
+            font-size: 10px; padding: 3px 10px; border-radius: 4px;
+            font-weight: 700; letter-spacing: .05em;
+        }
+        .badge-red   { background: rgba(255,0,60,.15);  border: 1px solid #ff003c; color: #ff6680; }
+        .badge-blue  { background: rgba(0,100,255,.15); border: 1px solid #3b82f6; color: #93c5fd; }
+        .badge-green { background: rgba(0,255,0,.1);    border: 1px solid #00ff00; color: #4ade80; }
+
+        /* ── Main grid ── */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 12px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* ── Controls panel ── */
+        .controls { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+        .controls h3 {
+            font-size: 13px; color: #fff; letter-spacing: .1em;
+            border-bottom: 1px solid #1a3a1a; padding-bottom: 8px; margin-bottom: 4px;
+        }
+        .controls p { font-size: 11px; color: #666; line-height: 1.6; }
+
+        label { display: block; font-size: 12px; color: #4ade80; margin-bottom: 8px; }
+        label span { color: #fff; font-size: 16px; font-weight: 700; }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track {
+            height: 4px; background: #1a2a1a; border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 14px; height: 22px;
+            background: #00ff00; cursor: pointer;
+            box-shadow: 0 0 8px #00ff00; border-radius: 2px;
+            margin-top: -9px;
+        }
+        .slider-labels {
+            display: flex; justify-content: space-between;
+            font-size: 10px; color: #555; margin-top: 4px;
+        }
+
+        /* ── Stat cards inside controls ── */
+        .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stat-card {
+            background: #0d0d0d; border: 1px solid #1a2a1a;
+            border-radius: 4px; padding: 10px; text-align: center;
+        }
+        .stat-card .val { font-size: 20px; font-weight: 700; }
+        .stat-card .lbl { font-size: 10px; color: #555; margin-top: 2px; }
+        .val-red   { color: #ff003c; }
+        .val-green { color: #00ff00; }
+
+        /* ── Verdict banner ── */
+        .verdict {
+            padding: 10px 12px; border-radius: 4px;
+            font-size: 11px; line-height: 1.6; display: none;
+        }
+        .verdict-ok      { border: 1px solid #4ade80; background: rgba(0,255,0,.05); color: #4ade80; }
+        .verdict-warn    { border: 1px solid #facc15; background: rgba(250,200,0,.05); color: #facc15; }
+        .verdict-breach  { border: 1px solid #ff003c; background: rgba(255,0,60,.05); color: #ff6680; }
+        .verdict-fail    { border: 1px solid #f97316; background: rgba(255,100,0,.05); color: #fdba74; }
+
+        /* ── Run button ── */
+        #run-btn {
+            width: 100%; padding: 12px; margin-top: auto;
+            background: rgba(0,255,0,.1); border: 2px solid #00ff00;
+            color: #4ade80; font-family: inherit; font-size: 12px;
+            font-weight: 700; letter-spacing: .15em; cursor: pointer;
+            transition: background .2s, color .2s; border-radius: 4px;
+            text-transform: uppercase;
+        }
+        #run-btn:hover:not(:disabled) { background: #00ff00; color: #000; }
+        #run-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+        /* ── Chart panel ── */
+        .chart-panel { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+        .chart-panel h3 { font-size: 11px; color: #888; letter-spacing: .1em; }
+        .chart-wrap { flex: 1; position: relative; min-height: 280px; }
+
+        /* ── Terminal ── */
+        .terminal {
+            height: 140px; overflow-y: auto; padding: 12px 16px;
+            flex-shrink: 0;
+        }
+        .terminal::-webkit-scrollbar { width: 4px; }
+        .terminal::-webkit-scrollbar-thumb { background: #1a3a1a; border-radius: 2px; }
+        .log-line { font-size: 11px; margin-bottom: 4px; line-height: 1.5; }
+        .log-default { color: #4a5a4a; }
+        .log-info    { color: #aaa; }
+        .log-warn    { color: #facc15; font-weight: 700; }
+        .log-error   { color: #ff003c; font-weight: 700; }
+        .log-success { color: #4ade80; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div>
+            <h1>THESIS TACTICAL VIEW</h1>
+            <h2>ADVERSARIAL MINIMAX GAME SIMULATOR </h2>
+        </div>
+        <div class="badge-row">
+            <span class="badge badge-red">ATTACKER: ACTIVE</span>
+            <span class="badge badge-blue">DEFENDER: KANTIAN</span>
+            <span class="badge badge-green">BioBERT v1.1</span>
+        </div>
+    </header>
+
+    <!-- Main -->
+    <div class="main-grid">
+
+        <!-- Controls -->
+        <div class="panel controls">
+            <div>
+                <h3>DEFENSE PARAMETERS</h3>
+                <p>Adjust the Kantian privacy penalty λ to observe the privacy–utility trade-off reaching Nash equilibrium.</p>
+            </div>
+
+            <div>
+                <label>Penalty Constraint (λ): <span id="lambda-val">50</span></label>
+                <input type="range" id="lambda-slider" min="0" max="100" step="10" value="50">
+                <div class="slider-labels">
+                    <span>0 — Baseline</span>
+                    <span>50 — Target</span>
+                    <span>100 — Max</span>
+                </div>
+            </div>
+
+            <!-- Live stat cards — updated during simulation -->
+            <div>
+                <h3>LIVE METRICS</h3>
+                <div class="stat-row">
+                    <div class="stat-card">
+                        <div class="val val-red" id="stat-mia">—</div>
+                        <div class="lbl">MIA RISK</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="val val-green" id="stat-f1">—</div>
+                        <div class="lbl">TEST F1</div>
+                    </div>
+                </div>
+                <div class="stat-row" style="margin-top:8px">
+                    <div class="stat-card">
+                        <div class="val" id="stat-delta" style="color:#facc15">—</div>
+                        <div class="lbl">Δ FROM RANDOM</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="val" id="stat-epoch" style="color:#888">—</div>
+                        <div class="lbl">EPOCH</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Verdict banner -->
+            <div class="verdict" id="verdict"></div>
+
+            <button id="run-btn" onclick="startSimulation()">Initialize Simulation</button>
+        </div>
+
+        <!-- Chart -->
+        <div class="panel chart-panel">
+            <h3>LIVE LATENT SPACE METRICS — MIA RISK &amp; DIAGNOSTIC UTILITY PER EPOCH</h3>
+            <div class="chart-wrap">
+                <canvas id="simChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="panel terminal" id="terminal">
+        <div class="log-line log-default">> System initialized. Awaiting parameters...</div>
+        <div class="log-line log-default">> Select λ and click Initialize Simulation to begin.</div>
+    </div>
+
+    <script>
+    // ── Trajectory data ────────────────────────────────────────
+    // MIA and F1 values follow the scientific narrative of your thesis:
+    // λ=0  (Gradient Ascent): MIA rises — model forgets forget set but leaks membership
+    // λ=10 (Weak):            MIA barely suppressed, good utility
+    // λ=50 (Balanced):        MIA converges to ~0.51 (near-random), utility preserved
+    // λ=100 (Aggressive):     MIA drops below random (over-suppression), utility collapses
+
+    const TRAJECTORIES = {
+        0: {
+            label: "Gradient Ascent (λ = 0) — Baseline",
+            risk: [0.50, 0.57, 0.63, 0.68, 0.72, 0.74],
+            f1:   [0.12, 0.28, 0.41, 0.50, 0.54, 0.56],
+            logs: [
+                { text: "> Initializing standard gradient ascent (no privacy constraint)...", cls: "log-info" },
+                { text: "> Attacker probing latent space — no defence active.", cls: "log-info" },
+                { text: "> Vulnerability detected: PII tokens dominate gradient updates.", cls: "log-warn" },
+                { text: "> Membership signal strengthening. Attacker confidence rising.", cls: "log-warn" },
+                { text: "> [CRITICAL] Membership Inference Attack successful. GDPR Art. 17 violated.", cls: "log-error" },
+                { text: "> Simulation complete. MIA: 0.74 | F1: 0.56 — Privacy compromised.", cls: "log-error" }
+            ],
+            verdictClass: "verdict-breach",
+            verdictText:  "GDPR VIOLATION — Attacker achieves 74% confidence. No unlearning constraint applied. Membership of forget-set records is fully identifiable. GDPR Art. 17 right-to-erasure is not satisfied."
+        },
+        10: {
+            label: "Kantian Unlearning — λ = 10 (Weak constraint)",
+            risk: [0.50, 0.52, 0.53, 0.54, 0.54, 0.55],
+            f1:   [0.12, 0.30, 0.46, 0.56, 0.60, 0.62],
+            logs: [
+                { text: "> Applying weak Kantian constraint (λ=10)...", cls: "log-info" },
+                { text: "> Model prioritising diagnostic utility over privacy penalty.", cls: "log-info" },
+                { text: "> Privacy boundary holding, but constraint force insufficient.", cls: "log-warn" },
+                { text: "> Attacker gaining marginal confidence — entropy leakage detected.", cls: "log-warn" },
+                { text: "> WARNING: λ too low to reach cryptographic randomness (50%).", cls: "log-warn" },
+                { text: "> Simulation complete. MIA: 0.55 | F1: 0.62 — Partial protection only.", cls: "log-warn" }
+            ],
+            verdictClass: "verdict-warn",
+            verdictText:  "PARTIAL PROTECTION — Attacker at 55%, above the 50% random-guess baseline. Utility is well-preserved (F1 = 0.62) but the privacy boundary has micro-fractures. Increasing λ is recommended for full GDPR compliance."
+        },
+        50: {
+            label: "Kantian Unlearning — λ = 50 (Balanced — thesis gold standard)",
+            risk: [0.50, 0.52, 0.51, 0.52, 0.51, 0.51],
+            f1:   [0.12, 0.22, 0.36, 0.46, 0.50, 0.52],
+            logs: [
+                { text: "> Enforcing balanced Kantian constraint (λ=50)...", cls: "log-info" },
+                { text: "> Minimax adversarial game initiated. Defender and attacker engaged.", cls: "log-info" },
+                { text: "> Defender dynamically perturbing latent representations of forget set.", cls: "log-info" },
+                { text: "> Attacker entropy neutralised. Confidence converging to 0.50.", cls: "log-success" },
+                { text: "> GDPR Art. 17 compliance verified. No catastrophic forgetting detected.", cls: "log-success" },
+                { text: "> [NASH EQUILIBRIUM] MIA: 0.51 ≈ random. F1: 0.52 preserved. Unlearning successful.", cls: "log-success" }
+            ],
+            verdictClass: "verdict-ok",
+            verdictText:  "GDPR COMPLIANT — Nash equilibrium achieved. Attacker at 51% (≈ random coin flip). The model has successfully unlearned the forget set while preserving diagnostic utility (F1 = 0.52). GDPR Art. 17 right-to-erasure is satisfied."
+        },
+        100: {
+            label: "Kantian Unlearning — λ = 100 (Aggressive over-suppression)",
+            risk: [0.50, 0.48, 0.45, 0.43, 0.42, 0.42],
+            f1:   [0.12, 0.16, 0.20, 0.25, 0.28, 0.29],
+            logs: [
+                { text: "> Applying maximum penalty constraint (λ=100)...", cls: "log-info" },
+                { text: "> Extreme latent space perturbation detected.", cls: "log-warn" },
+                { text: "> Attacker confidence suppressed below 50% — over-correction occurring.", cls: "log-warn" },
+                { text: "> [WARNING] Catastrophic forgetting detected. Clinical features degrading.", cls: "log-error" },
+                { text: "> Feature extraction mechanisms for medical specialties destroyed.", cls: "log-error" },
+                { text: "> [FAILURE] MIA: 0.42 (over-suppressed). F1: 0.29 — Clinically non-viable.", cls: "log-error" }
+            ],
+            verdictClass: "verdict-fail",
+            verdictText:  "OVER-SUPPRESSION — MIA drops to 0.42 (below random), indicating catastrophic forgetting rather than targeted unlearning. Utility collapses to F1 = 0.29 — the model is clinically useless. λ = 50 is the correct operating point."
+        }
+    };
+
+    // ── Chart setup ────────────────────────────────────────────
+    const ctx = document.getElementById('simChart').getContext('2d');
+    Chart.defaults.color = '#555';
+    Chart.defaults.font.family = "'Share Tech Mono', 'Courier New', monospace";
+
+    const simChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Epoch 0','Epoch 1','Epoch 2','Epoch 3','Epoch 4','Epoch 5'],
+            datasets: [
+                {
+                    label: 'MIA Attacker Risk  (50% = ideal)',
+                    borderColor: '#ff003c',
+                    backgroundColor: 'rgba(255,0,60,0.08)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#ff003c',
+                    pointRadius: 5,
+                    fill: true, tension: 0.35, data: []
+                },
+                {
+                    label: 'Diagnostic F1 Score  (higher = better)',
+                    borderColor: '#00ff00',
+                    backgroundColor: 'rgba(0,255,0,0.04)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#00ff00',
+                    pointRadius: 5,
+                    fill: true, tension: 0.35, data: []
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 350, easing: 'easeOutQuart' },
+            scales: {
+                y: {
+                    min: 0, max: 1.0,
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    ticks: { color: '#555', font: { size: 11 }, stepSize: 0.1 }
+                },
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    ticks: { color: '#555', font: { size: 11 } }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#aaa', padding: 20, font: { size: 12 }, boxWidth: 14 }
+                },
+                // Reference line at MIA = 0.50 (random guess / cryptographic baseline)
+                annotation: null  // We draw this manually below via a custom plugin
+            }
+        },
+        plugins: [{
+            id: 'randomBaseline',
+            afterDraw(chart) {
+                const { ctx: c, chartArea: { left, right, top, bottom }, scales: { y } } = chart;
+                const yPos = y.getPixelForValue(0.50);
+                c.save();
+                c.setLineDash([6, 4]);
+                c.strokeStyle = 'rgba(255,255,255,0.2)';
+                c.lineWidth = 1.5;
+                c.beginPath();
+                c.moveTo(left, yPos);
+                c.lineTo(right, yPos);
+                c.stroke();
+                c.setLineDash([]);
+                c.fillStyle = 'rgba(255,255,255,0.35)';
+                c.font = "10px 'Courier New', monospace";
+                c.fillText('50% — random guess baseline', left + 6, yPos - 5);
+                c.restore();
+            }
+        }]
+    });
+
+    // ── Controls ───────────────────────────────────────────────
+    const slider     = document.getElementById('lambda-slider');
+    const lambdaVal  = document.getElementById('lambda-val');
+    const terminal   = document.getElementById('terminal');
+    const runBtn     = document.getElementById('run-btn');
+    const statMIA    = document.getElementById('stat-mia');
+    const statF1     = document.getElementById('stat-f1');
+    const statDelta  = document.getElementById('stat-delta');
+    const statEpoch  = document.getElementById('stat-epoch');
+    const verdict    = document.getElementById('verdict');
+
+    const SNAP = [0, 10, 50, 100];
+    slider.addEventListener('input', e => {
+        const raw = parseInt(e.target.value);
+        const snapped = SNAP.reduce((prev, cur) =>
+            Math.abs(cur - raw) < Math.abs(prev - raw) ? cur : prev
+        );
+        e.target.value = snapped;
+        lambdaVal.innerText = snapped;
+    });
+
+    function log(text, cls = 'log-info') {
+        const d = document.createElement('div');
+        d.className = `log-line ${cls}`;
+        d.innerText = text;
+        terminal.appendChild(d);
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    let simInterval = null;
+
+    function startSimulation() {
+        clearInterval(simInterval);
+        runBtn.disabled = true;
+        runBtn.innerText = 'SIMULATING...';
+        terminal.innerHTML = '';
+        verdict.style.display = 'none';
+
+        // Reset chart
+        simChart.data.datasets[0].data = [];
+        simChart.data.datasets[1].data = [];
+        simChart.update();
+
+        // Reset stat cards
+        statMIA.innerText = statF1.innerText = statDelta.innerText = '—';
+        statEpoch.innerText = '0 / 5';
+
+        const λ    = parseInt(slider.value);
+        const data = TRAJECTORIES[λ];
+        let step   = 0;
+
+        log(`> COMMENCING SIMULATION — ${data.label}`);
+        log(`> Reference line: MIA = 0.50 (cryptographic random-guess baseline)`);
+
+        simInterval = setInterval(() => {
+            const mia = data.risk[step];
+            const f1  = data.f1[step];
+            const delta = (mia - 0.50).toFixed(2);
+            const deltaSign = delta >= 0 ? '+' : '';
+
+            simChart.data.datasets[0].data.push(mia);
+            simChart.data.datasets[1].data.push(f1);
+            simChart.update();
+
+            // Update stat cards
+            statMIA.innerText   = mia.toFixed(2);
+            statF1.innerText    = f1.toFixed(2);
+            statDelta.innerText = `${deltaSign}${delta}`;
+            statEpoch.innerText = `${step} / 5`;
+
+            // Colour Δ from random
+            statDelta.style.color = Math.abs(parseFloat(delta)) < 0.03
+                ? '#4ade80' : parseFloat(delta) > 0 ? '#ff003c' : '#f97316';
+
+            // Terminal log
+            const entry = data.logs[step];
+            log(entry.text, entry.cls);
+
+            step++;
+            if (step >= 6) {
+                clearInterval(simInterval);
+                runBtn.disabled = false;
+                runBtn.innerText = 'INITIALIZE SIMULATION';
+                statEpoch.innerText = '5 / 5';
+
+                // Show verdict
+                verdict.className = `verdict ${data.verdictClass}`;
+                verdict.innerText = data.verdictText;
+                verdict.style.display = 'block';
+
+                log('> SIMULATION COMPLETE.', 'log-default');
+            }
+        }, 800);
+    }
+    </script>
+</body>
+</html>
