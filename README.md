@@ -3,6 +3,10 @@
 [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Live%20Demo-blue)](https://huggingface.co/spaces/GodelModel/Master_Thesis/tree/main)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1zL1DuGnGYqp1kzfuhOXlvn9dXcMvW2Ss?usp=sharing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Live Simulator](https://img.shields.io/badge/Live-Game_Theory_Simulator-purple)](https://lukabaklaga123.github.io/kantian-machine-unlearning/)
+
+
+
 
 **A cryptographically secure, GDPR-compliant machine unlearning framework for High-Risk Clinical AI Systems.** Developed as part of a Dual-Degree Master's Thesis in Cybersecurity at Northern Kentucky University (NKU), and St. Andrew the First-Called Georgian University (SANGU).
 
@@ -33,6 +37,10 @@ The following metrics were generated using a rigorous adversarial audit comparin
 A fully interactive Gradio dashboard has been deployed to simulate adversarial audits in real-time. It visualizes the shift in the model's self-attention—proving the neural network successfully diverts its focus away from intercepted PII and toward clinical symptoms.
 
 👉 **[Launch the Live Adversarial Simulator on Hugging Face](https://huggingface.co/spaces/GodelModel/Master_Thesis)**
+
+[![Live Simulator](https://img.shields.io/badge/Live-Game_Theory_Simulator-purple)](https://lukabaklaga123.github.io/kantian-machine-unlearning/)
+
+Game Theory Minimax Simulator: A standalone, interactive tactical view demonstrating the convergence of the Kantian constraint ($\lambda=50$) to Nash equilibrium.
 
 ## 💻 How to Run the Experiments
 The empirical data and statistical proofs were generated across two primary Google Colab environments. You can reproduce the entire pipeline by running them sequentially:
