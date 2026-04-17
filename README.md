@@ -52,4 +52,7 @@ The empirical data and statistical proofs were generated across two primary Goog
 2. **`02_Gold_Standard_Validation.ipynb`**
    * *Purpose:* Addresses the ultimate benchmark in machine unlearning. It evaluates "Forget-Set Task Accuracy" (Forget F1) and trains a fresh BioBERT purely on the Retain Set (the Gold Standard). It concludes with the Kolmogorov-Smirnov (K-S) statistical test proving equivalence.
    * *Hardware:* Google Colab (T4 GPU recommended).
+  
+3. **`03_Philosophical_Game_Theory.ipynb`**
+   * *Purpose:* Contains the mathematical proofs, algorithmic implementations of the Epistemic Blindspot, and the raw visualizations for the Kantian Minimax Stackelberg game.
 
